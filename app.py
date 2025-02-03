@@ -105,7 +105,7 @@ def main():
         st.progress(risk_prob)
 
     # Advanced Visualization Tabs
-    tab1, tab2, tab3 = st.tabs(["🔍 Feature Analysis", "📊 Model Performance", "🌳 Decision Tree"])
+    tab1, tab2, tab3, tab4 = st.tabs(["🔍 Feature Analysis", "📊 Model Performance", "🌳 Decision Tree", "📈 Comprehensive Analysis"])
 
     with tab1:
         col1, col2 = st.columns(2)
@@ -168,6 +168,80 @@ def main():
                   proportion=True,
                   rounded=True)
         st.pyplot(fig5)
+
+    with tab4:
+        st.header("📊 Feature Distribution Analysis")
+    
+        # Feature Selection Dropdown
+        selected_feature = st.selectbox(
+            "Select Feature to Visualize", 
+            data.columns[1:],
+            key="feature_distribution_main"
+        )
+        
+        # Create two columns for benign and malignant distributions
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Benign Tumor Distribution")
+            benign_dist = px.histogram(
+                data[data['diagnosis'] == 0], 
+                x=selected_feature,
+                title=f"Benign {selected_feature} Distribution",
+                color_discrete_sequence=['blue']
+            )
+            st.plotly_chart(benign_dist, use_container_width=True)
+        
+        with col2:
+            st.subheader("Malignant Tumor Distribution")
+            malignant_dist = px.histogram(
+                data[data['diagnosis'] == 1], 
+                x=selected_feature,
+                title=f"Malignant {selected_feature} Distribution",
+                color_discrete_sequence=['red']
+            )
+            st.plotly_chart(malignant_dist, use_container_width=True)
+        
+        # Statistical Summary
+        st.subheader("Statistical Summary")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.metric("Benign Mean", 
+                    f"{data[data['diagnosis']==0][selected_feature].mean():.2f}")
+        with col2:
+            st.metric("Malignant Mean", 
+                    f"{data[data['diagnosis']==1][selected_feature].mean():.2f}")
+        st.subheader("Feature Relationship Visualization")
+        
+        # Pairwise Feature Selection
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            feature_x = st.selectbox(
+                "X-axis Feature", 
+                data.columns[1:],
+                key="pairwise_x_selector"
+            )
+        
+        with col2:
+            feature_y = st.selectbox(
+                "Y-axis Feature", 
+                data.columns[1:],
+                key="pairwise_y_selector"
+            )
+        
+        # Scatter Plot with Diagnosis Coloring
+        fig_scatter = px.scatter(
+            data, 
+            x=feature_x, 
+            y=feature_y, 
+            color='diagnosis',
+            color_discrete_map={0: 'blue', 1: 'red'},
+            title=f"{feature_x} vs {feature_y} by Diagnosis",
+            labels={'diagnosis': 'Tumor Type'}
+        )
+        st.plotly_chart(fig_scatter, use_container_width=True)
 
 if __name__ == '__main__':
     main()

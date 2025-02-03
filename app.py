@@ -1,21 +1,26 @@
-# cancer_prediction.py
 import pandas as pd
 import numpy as np
 import streamlit as st
 from sklearn.tree import DecisionTreeClassifier, plot_tree
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, roc_curve, auc
+from sklearn.metrics import accuracy_score, confusion_matrix, roc_curve, auc
 from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 import seaborn as sns
+import plotly.express as px
+import plotly.graph_objects as go
 
-
+# Enhanced Caching and Error Handling
 @st.cache_data
 def load_data():
-    data = pd.read_csv('cancer.csv')
-    data['diagnosis'] = data['diagnosis'].map({'M': 1, 'B': 0})
-    data.drop(['id', 'Unnamed: 32'], axis=1, inplace=True, errors='ignore')
-    return data
+    try:
+        data = pd.read_csv('cancer.csv')
+        data['diagnosis'] = data['diagnosis'].map({'M': 1, 'B': 0})
+        data.drop(['id', 'Unnamed: 32'], axis=1, inplace=True, errors='ignore')
+        return data
+    except Exception as e:
+        st.error(f"Data loading error: {e}")
+        return None
 
 @st.cache_resource
 def train_model(data):
@@ -25,31 +30,41 @@ def train_model(data):
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
     scaler = StandardScaler()
-    X_train = scaler.fit_transform(X_train)
-    X_test = scaler.transform(X_test)
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
     
     model = DecisionTreeClassifier(max_depth=5, random_state=42)
-    model.fit(X_train, y_train)
+    model.fit(X_train_scaled, y_train)
     
-    y_pred = model.predict(X_test)
-    y_proba = model.predict_proba(X_test)[:, 1]
+    y_pred = model.predict(X_test_scaled)
+    y_proba = model.predict_proba(X_test_scaled)[:, 1]
     accuracy = accuracy_score(y_test, y_pred)
     
     return model, scaler, accuracy, X_test, y_test, y_pred, y_proba
 
-# Streamlit app
 def main():
+    st.set_page_config(page_title="Cancer Prediction System", page_icon="🩺", layout="wide")
+    
     st.title("🩺 Advanced Cancer Prediction System")
+    st.markdown("### AI-Powered Diagnostic Support Tool")
 
     data = load_data()
+    if data is None:
+        st.stop()
 
-    st.sidebar.header("Patient Features")
+    # AI Risk Insights Section
+    st.sidebar.header("🔬 Patient Risk Assessment")
     input_features = []
-    
 
-    for col in data.columns[1:]:  # Use all features except diagnosis
-        min_val = float(data[col].min())
-        max_val = float(data[col].max())
+    # Dynamic Feature Input with Risk Indicators
+    risk_guidance = {
+        'low_risk': '✅ Low Risk',
+        'moderate_risk': '⚠️ Moderate Risk',
+        'high_risk': '🚨 High Risk'
+    }
+
+    for col in data.columns[1:]:
+        min_val, max_val = float(data[col].min()), float(data[col].max())
         default_val = float(data[col].median())
         input_val = st.sidebar.slider(
             label=col,
@@ -59,87 +74,100 @@ def main():
             step=(max_val - min_val)/100
         )
         input_features.append(input_val)
-    
+
     model, scaler, accuracy, X_test, y_test, y_pred, y_proba = train_model(data)
     
-    if st.sidebar.button("Predict"):
+    # Prediction and Risk Assessment
+    if st.sidebar.button("Predict Risk"):
         input_array = np.array(input_features).reshape(1, -1)
         scaled_input = scaler.transform(input_array)
         prediction = model.predict(scaled_input)
+        risk_prob = model.predict_proba(scaled_input)[0][1]
+
+        col1, col2, col3 = st.columns(3)
         
-        st.subheader("Prediction Result")
-        result = "Malignant (Cancer)" if prediction[0] == 1 else "Benign (No Cancer)"
+        with col1:
+            st.metric("Prediction", "Malignant" if prediction[0] == 1 else "Benign")
         
-        # Change color based on prediction
-        if prediction[0] == 1:
-            st.error(f"**Diagnosis:** {result}")
-        else:
-            st.success(f"**Diagnosis:** {result}")
+        with col2:
+            st.metric("Risk Probability", f"{risk_prob*100:.2f}%")
+        
+        with col3:
+            st.metric("Model Accuracy", f"{accuracy*100:.2f}%")
+
+        # Risk Level Color Coding
+        risk_color = {
+            0: "green", 
+            1: "red"
+        }
+        
+        st.markdown(f"### Risk Assessment: {'🚨 High Risk' if prediction[0] == 1 else '✅ Low Risk'}")
+        st.progress(risk_prob)
+
+    # Advanced Visualization Tabs
+    tab1, tab2, tab3 = st.tabs(["🔍 Feature Analysis", "📊 Model Performance", "🌳 Decision Tree"])
+
+    with tab1:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Correlation Heatmap")
+            fig1 = px.imshow(data.corr(), text_auto=True, color_continuous_scale='RdBu_r')
+            st.plotly_chart(fig1, use_container_width=True)
+        
+        with col2:
+            st.subheader("Feature Importance")
+            feature_importance = pd.DataFrame({
+                'Feature': data.columns[1:],
+                'Importance': model.feature_importances_
+            }).sort_values('Importance', ascending=False)
             
-        st.info(f"Model Accuracy: {accuracy:.2%}")
-    
+            fig2 = px.bar(
+                feature_importance.head(10), 
+                x='Importance', 
+                y='Feature', 
+                orientation='h',
+                title="Top 10 Most Important Features"
+            )
+            st.plotly_chart(fig2, use_container_width=True)
 
-    st.subheader("Data Analysis")
-    
- 
-    with st.expander("Correlation Heatmap"):
-        fig, ax = plt.subplots(figsize=(18, 18))
-        sns.heatmap(data.corr(), annot=True, cmap='coolwarm', ax=ax)
-        st.pyplot(fig)
-   
-    with st.expander("Feature Importance"):
-        feature_importance = pd.DataFrame({
-            'Feature': data.columns[1:],
-            'Importance': model.feature_importances_
-        }).sort_values('Importance', ascending=False)
+    with tab2:
+        col1, col2 = st.columns(2)
         
-        fig2, ax2 = plt.subplots(figsize=(10, 6))
-        sns.barplot(x='Importance', y='Feature', data=feature_importance.head(10), palette='viridis', ax=ax2)
-        st.pyplot(fig2)
-  
-    with st.expander("Feature Distributions"):
-        selected_feature = st.selectbox("Select feature to view distribution:", data.columns[1:])
-        fig3, ax3 = plt.subplots()
-        sns.histplot(data=data, x=selected_feature, hue='diagnosis', kde=True, element='step', palette='viridis')
-        st.pyplot(fig3)
-    
+        with col1:
+            st.subheader("Confusion Matrix")
+            cm = confusion_matrix(y_test, y_pred)
+            fig3 = px.imshow(cm, text_auto=True, color_continuous_scale='Blues')
+            st.plotly_chart(fig3, use_container_width=True)
+        
+        with col2:
+            st.subheader("ROC Curve")
+            fpr, tpr, _ = roc_curve(y_test, y_proba)
+            roc_auc = auc(fpr, tpr)
+            
+            fig4 = go.Figure()
+            fig4.add_trace(go.Scatter(x=fpr, y=tpr, mode='lines', name=f'ROC Curve (AUC = {roc_auc:.2f})'))
+            fig4.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode='lines', name='Random Classifier'))
+            
+            fig4.update_layout(
+                xaxis_title='False Positive Rate',
+                yaxis_title='True Positive Rate',
+                title='Receiver Operating Characteristic (ROC) Curve'
+            )
+            st.plotly_chart(fig4, use_container_width=True)
 
-    st.subheader("Model Evaluation")
-    
- 
-    with st.expander("Confusion Matrix"):
-        cm = confusion_matrix(y_test, y_pred)
-        fig4, ax4 = plt.subplots()
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax4)
-        ax4.set_xlabel('Predicted')
-        ax4.set_ylabel('Actual')
-        ax4.set_xticklabels(['Benign', 'Malignant'])
-        ax4.set_yticklabels(['Benign', 'Malignant'])
-        st.pyplot(fig4)
- 
-    with st.expander("ROC Curve"):
-        fpr, tpr, _ = roc_curve(y_test, y_proba)
-        roc_auc = auc(fpr, tpr)
-        fig5, ax5 = plt.subplots()
-        ax5.plot(fpr, tpr, label=f'ROC curve (AUC = {roc_auc:.2f})')
-        ax5.plot([0, 1], [0, 1], 'k--')
-        ax5.set_xlabel('False Positive Rate')
-        ax5.set_ylabel('True Positive Rate')
-        ax5.set_title('ROC Curve')
-        ax5.legend()
-        st.pyplot(fig5)
-    
-    with st.expander("Decision Tree Structure"):
-        fig6, ax6 = plt.subplots(figsize=(20, 10))
+    with tab3:
+        st.subheader("Decision Tree Visualization")
+        fig5, ax5 = plt.subplots(figsize=(20, 10))
         plot_tree(model, 
-                 feature_names=data.columns[1:].tolist(), 
-                 class_names=['Benign', 'Malignant'], 
-                 filled=True, 
-                 ax=ax6, 
-                 max_depth=3,
-                 proportion=True,
-                 rounded=True)
-        st.pyplot(fig6)
+                  feature_names=data.columns[1:].tolist(), 
+                  class_names=['Benign', 'Malignant'],
+                  filled=True, 
+                  ax=ax5, 
+                  max_depth=3,
+                  proportion=True,
+                  rounded=True)
+        st.pyplot(fig5)
 
 if __name__ == '__main__':
     main()

@@ -132,7 +132,7 @@ def main():
     with st.expander("Decision Tree Structure"):
         fig6, ax6 = plt.subplots(figsize=(20, 10))
         plot_tree(model, 
-                 feature_names=data.columns[1:], 
+                 feature_names=data.columns[1:].tolist(), 
                  class_names=['Benign', 'Malignant'], 
                  filled=True, 
                  ax=ax6, 
